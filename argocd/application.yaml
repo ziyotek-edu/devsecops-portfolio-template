@@ -1,0 +1,26 @@
+# ArgoCD Application — points at YOUR repo
+#
+# Replace <YOUR_GITHUB_USERNAME> with your GitHub username before applying.
+# ArgoCD will watch this repo and deploy to the local kind cluster.
+#
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: portfolio
+  namespace: argocd
+spec:
+  project: default
+  source:
+    # TODO: Replace with your fork's URL
+    repoURL: https://github.com/<YOUR_GITHUB_USERNAME>/container-devsecops-template.git
+    targetRevision: main
+    path: k8s/overlays/local
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: portfolio
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

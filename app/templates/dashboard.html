@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ student_name }}{% endblock %}
+
+{% block content %}
+<section style="margin-bottom: 36px;">
+    <h2>Integrations</h2>
+    <div class="card-grid">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 500;">Vault</span>
+                <span class="status status-{{ integrations.vault.status }}">
+                    <span class="status-dot"></span>
+                    {{ integrations.vault.status }}
+                </span>
+            </div>
+            {% if integrations.vault.error %}
+            <p style="font-size: 12px; margin-top: 8px; color: var(--fail);">{{ integrations.vault.error }}</p>
+            {% endif %}
+        </div>
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 500;">GitHub API</span>
+                <span class="status status-{{ integrations.github.status }}">
+                    <span class="status-dot"></span>
+                    {{ integrations.github.status }}
+                </span>
+            </div>
+            {% if integrations.github.error %}
+            <p style="font-size: 12px; margin-top: 8px; color: var(--fail);">{{ integrations.github.error }}</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section style="margin-bottom: 36px;">
+    <h2>Pipeline Runs</h2>
+    <div class="card">
+        {% if workflow_runs %}
+        <ul class="item-list">
+            {% for run in workflow_runs %}
+            <li>
+                <div>
+                    <div class="item-primary">
+                        <a href="{{ run.url }}" target="_blank" rel="noopener">{{ run.name }}</a>
+                    </div>
+                    <div class="item-secondary">
+                        {{ run.branch }} · {{ run.sha }} · {{ run.created_at[:10] }}
+                    </div>
+                </div>
+                <div>
+                    {% if run.conclusion == 'success' %}
+                        <span class="badge badge-success">passed</span>
+                    {% elif run.conclusion == 'failure' %}
+                        <span class="badge badge-failure">failed</span>
+                    {% elif run.conclusion == 'cancelled' %}
+                        <span class="badge badge-neutral">cancelled</span>
+                    {% elif run.status == 'in_progress' or run.status == 'queued' %}
+                        <span class="badge badge-pending">running</span>
+                    {% else %}
+                        <span class="badge badge-neutral">{{ run.conclusion or run.status }}</span>
+                    {% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="unavailable">Pipeline data unavailable — check GitHub App credentials in Vault</p>
+        {% endif %}
+    </div>
+</section>
+
+<section style="margin-bottom: 36px;">
+    <h2>Recent Commits</h2>
+    <div class="card">
+        {% if commits %}
+        <ul class="item-list">
+            {% for commit in commits %}
+            <li>
+                <div>
+                    <div class="item-primary">{{ commit.message }}</div>
+                    <div class="item-secondary">{{ commit.author }} · {{ commit.date[:10] }}</div>
+                </div>
+                <div>
+                    <a href="{{ commit.url }}" target="_blank" rel="noopener"
+                       style="font-size: 12px; color: var(--accent); font-family: var(--mono);">
+                        {{ commit.sha }}
+                    </a>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="unavailable">Commit history unavailable — check GitHub App credentials in Vault</p>
+        {% endif %}
+    </div>
+</section>
+
+<section style="margin-bottom: 36px;">
+    <h2>Container Packages</h2>
+    <div class="card">
+        {% if packages %}
+        <ul class="item-list">
+            {% for pkg in packages %}
+            <li>
+                <div>
+                    <div class="item-primary">
+                        <a href="{{ pkg.url }}" target="_blank" rel="noopener">{{ pkg.name }}</a>
+                    </div>
+                    <div class="item-secondary">{{ pkg.visibility }} · {{ pkg.created_at[:10] if pkg.created_at else '' }}</div>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="unavailable">Package data unavailable — check GitHub App credentials or push an image to GHCR</p>
+        {% endif %}
+    </div>
+</section>
+
+<section>
+    <h2>Deployment</h2>
+    <div class="card">
+        <div class="meta-grid">
+            <span class="meta-key">version</span>
+            <span class="meta-val">{{ app_version }}</span>
+
+            <span class="meta-key">environment</span>
+            <span class="meta-val">{{ environment }}</span>
+
+            <span class="meta-key">pod</span>
+            <span class="meta-val">{{ pod_name }}</span>
+
+            <span class="meta-key">namespace</span>
+            <span class="meta-val">{{ pod_namespace }}</span>
+
+            <span class="meta-key">pod ip</span>
+            <span class="meta-val">{{ pod_ip }}</span>
+
+            <span class="meta-key">node</span>
+            <span class="meta-val">{{ node_name }}</span>
+
+            <span class="meta-key">repository</span>
+            <span class="meta-val">
+                <a href="https://github.com/{{ github_username }}/{{ github_repo }}" target="_blank" rel="noopener">
+                    {{ github_username }}/{{ github_repo }}
+                </a>
+            </span>
+
+            <span class="meta-key">image</span>
+            <span class="meta-val">ghcr.io/{{ github_username }}/devops-portfolio:{{ app_version }}</span>
+        </div>
+    </div>
+</section>
+{% endblock %}

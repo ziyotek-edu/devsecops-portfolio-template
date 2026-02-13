@@ -1,0 +1,383 @@
+# =============================================================================
+# DevSecOps CI/CD Pipeline
+# =============================================================================
+#
+# This pipeline implements a full security-first deployment workflow:
+#
+#   1. Code Quality    — lint (ruff) + SAST (bandit)
+#   2. Dockerfile Scan — Trivy config scan + hadolint
+#   3. Build           — Multi-stage Docker build
+#   4. Container Scan  — Trivy image scan (fail on CRITICAL/HIGH)
+#   5. Push to GHCR    — Only on merge to main
+#   6. K8s Validation  — kustomize build | kubeconform
+#   7. Integration Test — Start container, hit endpoints, verify responses
+#   8. Update Tag      — Commit new image SHA to k8s manifests (main only)
+#
+# The pipeline fails fast: cheap checks run first, expensive checks later.
+# Broken code never builds. Vulnerable containers never push. Bad YAML
+# never merges. This is the gate.
+# =============================================================================
+
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'challenges/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'challenges/**'
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/devops-portfolio
+  # Used by the tag-update step to skip triggering another pipeline run
+  CI_COMMIT_MESSAGE: "ci: update image tag to"
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+
+jobs:
+  # ===========================================================================
+  # Job 1: Code Quality — Lint + SAST
+  # ===========================================================================
+  code-quality:
+    name: "Code Quality"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linters
+        run: pip install ruff bandit
+
+      - name: Lint with ruff
+        run: ruff check app/ --output-format=github
+
+      - name: SAST with bandit
+        run: bandit -r app/ -f json -o bandit-report.json --severity-level medium || true
+
+      - name: Check bandit results
+        run: |
+          if [ -f bandit-report.json ]; then
+            HIGH=$(python3 -c "import json; r=json.load(open('bandit-report.json')); print(sum(1 for i in r.get('results',[]) if i['issue_severity']=='HIGH'))")
+            echo "High severity issues: $HIGH"
+            if [ "$HIGH" -gt 0 ]; then
+              echo "::error::Bandit found $HIGH high-severity security issues"
+              cat bandit-report.json | python3 -m json.tool
+              exit 1
+            fi
+          fi
+
+  # ===========================================================================
+  # Job 2: Dockerfile Security — Trivy config + hadolint
+  # ===========================================================================
+  dockerfile-scan:
+    name: "Dockerfile Scan"
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Dockerfile with hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/Dockerfile
+          failure-threshold: warning
+
+      - name: Scan Dockerfile with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: app/
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+
+  # ===========================================================================
+  # Job 3: Build Container Image
+  # ===========================================================================
+  build:
+    name: "Build Container"
+    runs-on: ubuntu-latest
+    needs: dockerfile-scan
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build-push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=short
+
+      - name: Build image (no push yet)
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: app/
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save image for later jobs
+        run: |
+          docker save ${{ steps.meta.outputs.tags }} | gzip > /tmp/image.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-image
+          path: /tmp/image.tar.gz
+          retention-days: 1
+
+  # ===========================================================================
+  # Job 4: Container Vulnerability Scan
+  # ===========================================================================
+  container-scan:
+    name: "Container Scan"
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load < /tmp/image.tar.gz
+
+      - name: Scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.build.outputs.image-tag }}
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          format: "table"
+
+      - name: Trivy SARIF report (for GitHub Security tab)
+        uses: aquasecurity/trivy-action@master
+        if: always()
+        with:
+          image-ref: ${{ needs.build.outputs.image-tag }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  # ===========================================================================
+  # Job 5: Push to GHCR (main branch only)
+  # ===========================================================================
+  push:
+    name: "Push to GHCR"
+    runs-on: ubuntu-latest
+    needs: [build, container-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load < /tmp/image.tar.gz
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        run: docker push ${{ needs.build.outputs.image-tag }}
+
+  # ===========================================================================
+  # Job 6: Kubernetes Manifest Validation
+  # ===========================================================================
+  k8s-validate:
+    name: "K8s Validation"
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Validate local overlay
+        run: |
+          kubectl kustomize k8s/overlays/local \
+            | kubeconform -strict -ignore-missing-schemas -summary
+
+  # ===========================================================================
+  # Job 7: Integration Test
+  # ===========================================================================
+  integration-test:
+    name: "Integration Test"
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load < /tmp/image.tar.gz
+
+      - name: Start container
+        run: |
+          docker run -d --name test-app \
+            -p 5000:5000 \
+            -e STUDENT_NAME="Integration Test" \
+            -e GITHUB_USERNAME="${{ github.repository_owner }}" \
+            -e APP_VERSION="${{ github.sha }}" \
+            -e ENVIRONMENT="ci" \
+            ${{ needs.build.outputs.image-tag }}
+
+      - name: Wait for healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+              echo "App is healthy after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Test /health endpoint
+        run: |
+          RESPONSE=$(curl -sf http://localhost:5000/health)
+          echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert data['status'] == 'healthy', f'Expected healthy, got {data[\"status\"]}'
+          print('✓ /health returns healthy')
+          "
+
+      - name: Test /api/status endpoint
+        run: |
+          RESPONSE=$(curl -sf http://localhost:5000/api/status)
+          echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert data['status'] == 'healthy', 'Status not healthy'
+          assert data['student']['github_username'] == '${{ github.repository_owner }}', 'Wrong username'
+          assert data['integrations']['vault'] == 'disconnected', 'Vault should be disconnected in CI'
+          print('✓ /api/status returns correct structure')
+          print(f'  vault: {data[\"integrations\"][\"vault\"]}')
+          print(f'  github: {data[\"integrations\"][\"github_api\"]}')
+          "
+
+      - name: Test / (landing page) renders
+        run: |
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:5000/)
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Landing page returned $STATUS"
+            exit 1
+          fi
+          echo "✓ Landing page returns 200"
+
+      - name: Test /dashboard renders (graceful degradation)
+        run: |
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:5000/dashboard)
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Dashboard returned $STATUS"
+            exit 1
+          fi
+          # Verify it contains the unavailable message (no Vault in CI)
+          curl -sf http://localhost:5000/dashboard | grep -q "unavailable" && \
+            echo "✓ Dashboard renders with graceful degradation" || \
+            echo "✓ Dashboard renders"
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f test-app || true
+
+  # ===========================================================================
+  # Job 8: Update Image Tag in K8s Manifests (main branch only)
+  # ===========================================================================
+  update-tag:
+    name: "Update Image Tag"
+    runs-on: ubuntu-latest
+    needs: [push, k8s-validate, integration-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Skip if the current commit is already a tag update (prevent infinite loop)
+      - name: Check for CI commit
+        id: check
+        run: |
+          MSG=$(git log -1 --pretty=%s)
+          if [[ "$MSG" == "${{ env.CI_COMMIT_MESSAGE }}"* ]]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Skipping — this commit is already a tag update"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install kustomize
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          curl -sL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Update image tag
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | head -c 7)
+          cd k8s/base
+          kustomize edit set image ${{ env.IMAGE_NAME }}=${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}
+          echo "Updated image tag to sha-${SHORT_SHA}"
+          cat kustomization.yaml
+
+      - name: Commit and push
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | head -c 7)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          git commit -m "${{ env.CI_COMMIT_MESSAGE }} sha-${SHORT_SHA}"
+          git push

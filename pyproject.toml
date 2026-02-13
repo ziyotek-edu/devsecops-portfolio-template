@@ -1,0 +1,14 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "S", "B"]
+ignore = [
+    "S104",  # Binding to all interfaces is intentional
+    "S603",  # subprocess calls are not used
+    "S607",  # partial path — not applicable
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/app.py" = ["S105"]  # Vault token from env is expected

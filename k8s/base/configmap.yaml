@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: portfolio-config
+data:
+  STUDENT_NAME: "Your Name"
+  GITHUB_USERNAME: "your-github-username"
+  GITHUB_REPO: "container-devsecops-template"
+  BIO: "DevOps engineer building secure, automated infrastructure."
+  VAULT_ADDR: "http://vault.default:8200"
+  VAULT_SECRET_PATH: "secret/data/github-app"
+  # LINKEDIN_URL: ""
+  # WEBSITE_URL: ""

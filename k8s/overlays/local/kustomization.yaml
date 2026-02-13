@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: portfolio
+
+resources:
+  - ../../base
+  - namespace.yaml
+  - serviceaccount.yaml
+
+patches:
+  # Inject VAULT_TOKEN from the Kubernetes secret
+  - target:
+      kind: Deployment
+      name: portfolio
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: vault-token
+              key: token

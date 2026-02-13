@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ student_name }}{% endblock %} — DevSecOps Portfolio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0c0c0f;
+            --surface: #16161a;
+            --surface-raised: #1e1e24;
+            --border: #2a2a32;
+            --text: #e2e0dc;
+            --text-muted: #8a8a8e;
+            --accent: #60dcb0;
+            --accent-dim: #3a8a6a;
+            --warn: #e8a848;
+            --fail: #e85454;
+            --pass: #60dcb0;
+            --link: #70b8ff;
+            --mono: 'JetBrains Mono', monospace;
+            --serif: 'Source Serif 4', Georgia, serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--mono);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Subtle grid texture */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,.015) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,.015) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .page { position: relative; z-index: 1; }
+
+        /* Top bar */
+        .topbar {
+            border-bottom: 1px solid var(--border);
+            padding: 12px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: var(--text-muted);
+            background: rgba(12, 12, 15, 0.8);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .topbar-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent-dim);
+            animation: pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .topbar a {
+            color: var(--text-muted);
+            text-decoration: none;
+            padding: 4px 12px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .topbar a:hover {
+            color: var(--text);
+            border-color: var(--border);
+        }
+
+        .topbar a.active {
+            color: var(--accent);
+            border-color: var(--accent-dim);
+        }
+
+        /* Main content */
+        .content {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 48px 32px;
+        }
+
+        /* Typography */
+        h1 {
+            font-family: var(--serif);
+            font-size: 42px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+            margin-bottom: 8px;
+        }
+
+        h2 {
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+
+        h3 {
+            font-family: var(--serif);
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        p { color: var(--text-muted); }
+
+        a { color: var(--link); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* Cards */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 640px) {
+            .card-grid { grid-template-columns: 1fr; }
+            .content { padding: 24px 16px; }
+            h1 { font-size: 28px; }
+        }
+
+        /* Status indicators */
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .status-connected .status-dot { background: var(--pass); }
+        .status-disconnected .status-dot { background: var(--fail); }
+        .status-connected { color: var(--pass); }
+        .status-disconnected { color: var(--fail); }
+
+        /* Pipeline status badges */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-success { background: rgba(96, 220, 176, 0.15); color: var(--pass); }
+        .badge-failure { background: rgba(232, 84, 84, 0.15); color: var(--fail); }
+        .badge-pending { background: rgba(232, 168, 72, 0.15); color: var(--warn); }
+        .badge-neutral { background: rgba(138, 138, 142, 0.15); color: var(--text-muted); }
+
+        /* Lists */
+        .item-list { list-style: none; }
+
+        .item-list li {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .item-list li:last-child { border-bottom: none; }
+
+        .item-primary { color: var(--text); font-weight: 500; }
+        .item-secondary { color: var(--text-muted); font-size: 12px; }
+
+        /* Metadata pairs */
+        .meta-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 4px 16px;
+            font-size: 13px;
+        }
+
+        .meta-key { color: var(--text-muted); }
+        .meta-val { color: var(--text); word-break: break-all; }
+
+        /* Unavailable state */
+        .unavailable {
+            color: var(--text-muted);
+            font-style: italic;
+            font-size: 13px;
+            padding: 16px 0;
+        }
+
+        /* Version tag in footer */
+        .footer {
+            text-align: center;
+            padding: 32px;
+            font-size: 12px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            margin-top: 48px;
+        }
+
+        .footer code {
+            background: var(--surface);
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <nav class="topbar">
+            <div class="topbar-left">
+                <div class="topbar-dot"></div>
+                <span>{{ github_username }}/{{ github_repo | default('portfolio') }}</span>
+            </div>
+            <div>
+                <a href="/" {% if request.path == '/' %}class="active"{% endif %}>about</a>
+                <a href="/dashboard" {% if request.path == '/dashboard' %}class="active"{% endif %}>dashboard</a>
+                <a href="/api/status">api</a>
+            </div>
+        </nav>
+
+        <main class="content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="footer">
+            <code>{{ app_version }}</code> · {{ environment }}
+            {% if pod_name is defined and pod_name != 'unknown' %}
+                · {{ pod_name }}
+            {% endif %}
+        </footer>
+    </div>
+</body>
+</html>

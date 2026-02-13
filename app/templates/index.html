@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ student_name }}{% endblock %}
+
+{% block content %}
+<section style="margin-bottom: 48px;">
+    <div style="display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap;">
+        {% if profile and profile.avatar_url %}
+        <img src="{{ profile.avatar_url }}" alt="{{ student_name }}"
+             style="width: 96px; height: 96px; border-radius: 50%; border: 2px solid var(--border);">
+        {% else %}
+        <div style="width: 96px; height: 96px; border-radius: 50%; border: 2px solid var(--border);
+                    background: var(--surface); display: flex; align-items: center; justify-content: center;
+                    font-size: 36px; font-family: var(--serif); color: var(--accent);">
+            {{ student_name[0] | upper }}
+        </div>
+        {% endif %}
+
+        <div style="flex: 1; min-width: 280px;">
+            <h1>{{ student_name }}</h1>
+            <p style="font-size: 16px; margin-bottom: 16px;">{{ bio }}</p>
+
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px;">
+                <a href="https://github.com/{{ github_username }}" target="_blank" rel="noopener">
+                    github.com/{{ github_username }}
+                </a>
+                {% if linkedin_url %}
+                <a href="{{ linkedin_url }}" target="_blank" rel="noopener">LinkedIn</a>
+                {% endif %}
+                {% if website_url %}
+                <a href="{{ website_url }}" target="_blank" rel="noopener">Website</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+
+<section style="margin-bottom: 48px;">
+    <h2>What I Built</h2>
+
+    <div class="card" style="margin-bottom: 24px;">
+        <p style="color: var(--text); font-size: 15px; line-height: 1.7; font-family: var(--serif);">
+            This application is deployed through a DevSecOps pipeline that I designed and implemented.
+            Every commit is linted, scanned for security vulnerabilities, built into a container image,
+            validated against Kubernetes schemas, and integration tested — before it merges.
+            Deployment to Kubernetes happens automatically via GitOps.
+        </p>
+    </div>
+
+    <div class="card-grid">
+        <div class="card">
+            <h3>Pipeline</h3>
+            <p>GitHub Actions CI/CD with code linting (ruff), SAST (bandit), Dockerfile analysis,
+               container vulnerability scanning (Trivy), manifest validation (kubeconform), and
+               integration tests. Fails fast — broken code never ships.</p>
+        </div>
+
+        <div class="card">
+            <h3>Container Security</h3>
+            <p>Multi-stage Docker build with non-root user, pinned base image,
+               and zero critical vulnerabilities. Trivy scans both the Dockerfile
+               and the final image on every pull request.</p>
+        </div>
+
+        <div class="card">
+            <h3>GitOps Deployment</h3>
+            <p>ArgoCD watches this repository and continuously reconciles the Kubernetes
+               cluster to match the desired state in Git. Image tags are updated automatically
+               by the CI pipeline using the git SHA — no manual deploys.</p>
+        </div>
+
+        <div class="card">
+            <h3>Secrets Management</h3>
+            <p>GitHub App credentials are stored in HashiCorp Vault, not in environment variables
+               or Kubernetes Secrets. The application authenticates with Vault at runtime
+               using Kubernetes service account identity.</p>
+        </div>
+    </div>
+</section>
+
+<section>
+    <h2>Tech Stack</h2>
+
+    <div class="card">
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            {% for tech in [
+                "Python / Flask", "Docker", "Kubernetes", "ArgoCD", "GitHub Actions",
+                "Trivy", "Kustomize", "HashiCorp Vault", "GitHub Apps", "GHCR",
+                "ruff", "bandit", "kubeconform", "hadolint"
+            ] %}
+            <span style="background: var(--surface-raised); border: 1px solid var(--border);
+                         padding: 4px 12px; border-radius: 4px; font-size: 12px;
+                         color: var(--text-muted);">{{ tech }}</span>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock %}
