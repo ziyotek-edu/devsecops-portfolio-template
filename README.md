@@ -38,12 +38,12 @@ This project demonstrates end-to-end ownership of a production deployment pipeli
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           Kubernetes (kind)                             │
 │                                                                         │
-│  ┌────────────┐  ┌──────────────────┐  ┌──────────────┐                │
-│  │   Vault    │  │  Portfolio App   │  │   ArgoCD     │                │
-│  │            │  │                  │  │              │                │
-│  │ GitHub App │◄─┤ Flask dashboard  │  │ GitOps       │                │
-│  │ credentials│  │ /dashboard       │  │ controller   │                │
-│  └────────────┘  │ /api/status      │  └──────────────┘                │
+│  ┌────────────┐  ┌──────────────────┐  ┌──────────────┐                 │
+│  │   Vault    │  │  Portfolio App   │  │   ArgoCD     │                 │
+│  │            │  │                  │  │              │                 │
+│  │ GitHub App │◄─┤ Flask dashboard  │  │ GitOps       │                 │
+│  │ credentials│  │ /dashboard       │  │ controller   │                 │
+│  └────────────┘  │ /api/status      │  └──────────────┘                 │
 │                  └──────────────────┘                                   │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
